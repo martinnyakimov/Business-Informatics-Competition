@@ -1,0 +1,197 @@
+---
+title: "Анализ на продажбите на Superstore"
+author: "Мартин Якимов"
+date:
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+<p style="text-align: center; font-size: 25px;"><a href="https://e-bic.eu/" target="blank">Национално ученическо състезание по „Бизнес информатика“ ·BI·Competition 2021</a></p>
+<hr/>
+<p style="text-align: center; font-size: 20px;"><a href="https://github.com/martinnyakimov/Business-Informatics-Competition" target="blank">Сорс код</a></p>
+```{r, message=FALSE, echo=FALSE}
+library("tidyverse")
+library("plotly")
+library("knitr")
+
+df <- read.csv("superstore_orders.csv")
+df$Country <- NULL
+
+totalPrice <- df$Sales * df$Quantity
+df$FinalPrice <- round(totalPrice - (totalPrice * df$Discount), 2)
+
+df$Order.Date <- as.Date(df$Order.Date, format = "%m/%d/%Y")
+df$Ship.Date <- as.Date(df$Ship.Date, format = "%m/%d/%Y")
+df$Ship.Days <- ifelse(df$Ship.Date - df$Order.Date < 0, 365 + (df$Ship.Date - df$Order.Date) + 1, df$Ship.Date - df$Order.Date)
+
+style.bgcolor <- "#FAFAFA"
+```
+## Въведение
+Този анализ разглежда продажбите на магазин "Superstore" в Съединените американски щати. Обобщени данни може видите в следната таблица:
+```{r, echo=FALSE}
+orders.summary <- data.frame(Data = c("Общо продадено количество", "Продукти", "Категории", "Подкатегории", "Клиенти", "Градове", "Щати"),
+                             Labels = c(sum(df$Quantity), length(unique(df$Product.Name)), length(unique(df$Category)), length(unique(df$Sub.Category)),
+                                        length(unique(df$Customer.ID)), length(unique(df$City)), "Не са включени Аляска и Хаваи"))
+names(orders.summary) <- c("Критерий", "Брой")
+kable(orders.summary)
+```
+<hr/>
+## Разпределение на продажби по години
+```{r, echo=FALSE}
+orders.years <- aggregate(cbind(df$Quantity), by = list(Year = substring(df$Order.Date, 1, 4)), FUN = sum)
+names(orders.years)[2] <- "Freq"
+plot_ly(orders.years, labels = ~Year, values = ~Freq, type = "pie", hole = 0.5) %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor)
+```
+Данните демонстрират продажби от 4 последователни години (2014-2017). Броят на продажбите е нараствал всяка година. През 2014 г. те са били близо 20%, като стигат до ~33% през 2017 г. Най-голям ръст се забелязва също през 2017 г. (със `r 32.9-26`% спрямо предходната година).
+<hr/>
+## Продадени продукти на видовете клиенти
+```{r, echo=FALSE}
+orders.segments <- aggregate(cbind(df$Quantity), by = list(Segment = df$Segment), FUN = sum)
+names(orders.segments)[2] <- "Freq"
+plot_ly(orders.segments, labels = ~Segment, values = ~Freq, type = "pie", hole = 0.5) %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor)
+```
+Общият брой на клиентите е `r length(unique(df$Customer.ID))`, а продадените продукти са `r sum(orders.segments$Freq)`. Поръчаните продукти от физически лица е малко над половината с 51.5%. Най-малко поръчки са направени от тези, които работят от вкъщи (Home Office). Юридическите лица заемат близо една трета от продажбите.
+<hr/>
+## Среден брой дни за доставка според типа
+```{r, echo=FALSE}
+orders.SameDay <- filter(df, Ship.Mode == "Same Day")
+orders.SameDay.delays <- orders.SameDay %>% filter(Ship.Days > 0)
+orders.SameDay <- orders.SameDay$Ship.Days
+orders.FirstClass <- filter(df, Ship.Mode == "First Class")$Ship.Days
+orders.SecondClass <- filter(df, Ship.Mode == "Second Class")$Ship.Days
+orders.StandardClass <- filter(df, Ship.Mode == "Standard Class")$Ship.Days
+
+shippingModes <- c("Same Day", "First Class", "Second Class", "Standard Class")
+orders.shipping <- data.frame(Mode = shippingModes,
+                              Days = c(mean(orders.SameDay), mean(orders.FirstClass), mean(orders.SecondClass), mean(orders.StandardClass)))
+orders.shipping$Mode <- factor(orders.shipping$Mode, levels = orders.shipping$Mode)
+plot_ly(data = orders.shipping, x = ~Mode, y = ~Days, type = "scatter", mode = "lines") %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
+         xaxis = list(title = "Тип доставка"), yaxis = list(title = "Брой продажби"))
+
+orders.shipping.days <- data.frame(Mode = shippingModes,
+                                   Min = c(min(orders.SameDay), min(orders.FirstClass), min(orders.SecondClass), min(orders.StandardClass)),
+                                   Max = c(max(orders.SameDay), max(orders.FirstClass), max(orders.SecondClass), max(orders.StandardClass)))
+names(orders.shipping.days) <- c("Тип", "Най-бърза доставка (дни)", "Най-бавна доставка (дни)")
+
+kable(orders.shipping.days)
+```
+Магазинът предлага 4 вида доставки - на същия ден, първа класа, втора класа и стандартна. Тези, които пристигат на същия ден има няколко забавени доставки, които са доставени на следващия ден. Доставките от първа класа престигат средно за два дни, а най-голям период от време е стандартния тип, където клиентите получават продуктите за около 5 дни след поръчката. Най-бавната доставка е била 7 дни и е от стандартен тип. Може да се забележи, че е имало поръчки от втора класа, които са пристигали за 1 ден, колкото е и при първа класа.
+<hr/>
+## Продадени продукти по щат
+```{r, echo=FALSE}
+orders.states <- aggregate(cbind(df$Quantity), by = list(State = df$State), FUN = sum)
+names(orders.states)[2] <- "Freq"
+states <- read.csv("usa_state_codes.csv")
+orders.states$code <- states$code
+orders.states$state.bg <- states$state.bg
+
+orders.states$hover <- with(orders.states, paste(state.bg, "\n", "Количество: ", Freq))
+l <- list(color = toRGB("white"), width = 2)
+l <- list(color = toRGB("white"), width = 2)
+g <- list(scope = "usa", projection = list(type = "albers usa"), showlakes = TRUE, lakecolor = toRGB("white"))
+
+plot_geo(orders.states, locationmode = "USA-states") %>%
+  add_trace(z = ~Freq, text = ~hover, locations = ~code, color = ~Freq, colors = "Blues") %>%
+  colorbar(title = "Продажби") %>%
+  layout(geo = g, paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor)
+```
+На тази карта може да се види броя на продадените продукти във всеки щат. <i>Използвайте мишката върху картата, за да видите точния брой.</i>
+<hr/>
+## Щати с най-много продажби
+```{r, echo=FALSE}
+orders.states.top5 <- select(head(orders.states[order(-orders.states$Freq, orders.states$state ),], 5), "state.bg", "Freq")
+orders.states.least5 <- select(tail(orders.states[order(-orders.states$Freq, orders.states$state ),], 5), "state.bg", "Freq")
+orders.states.top5$state.bg <- factor(orders.states.top5$state.bg, levels = unique(orders.states.top5$state.bg)[order(orders.states.top5$Freq, decreasing = TRUE)])
+orders.states.least5$state.bg <- factor(orders.states.least5$state.bg, levels = unique(orders.states.least5$state.bg)[order(orders.states.least5$Freq, decreasing = TRUE)])
+
+plot_ly(data = orders.states.top5, x = ~state.bg, y = ~Freq, type = "bar") %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor, xaxis = list(title = "Щат"), yaxis = list(title = "Брой продажби"))
+```
+Това са щатите с най-много продажби. Например Калифорния има 7667 продадени продукта. Може да се свърже с тяхното население, тъй като Калифорния е най-многобройният щат в САЩ.
+<hr/>
+## Щати с най-малко продажби
+```{r, echo=FALSE}
+plot_ly(data = orders.states.least5, x = ~state.bg, y = ~Freq, type = "bar", marker = list(color = "#FF7F0E")) %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor, xaxis = list(title = "Щат"), yaxis = list(title = "Брой продажби"))
+```
+В щатите с най-малко продажби са с най-малко население. Уайоминг е на последно място, както по продажби, така и по население. Данните показват, че има само 4 продадени стоки.
+
+<a href="https://bg.wikipedia.org/wiki/%D0%A1%D0%BF%D0%B8%D1%81%D1%8A%D0%BA_%D0%BD%D0%B0_%D1%89%D0%B0%D1%82%D0%B8%D1%82%D0%B5_%D0%B2_%D0%A1%D0%90%D0%A9_%D0%BF%D0%BE_%D0%BD%D0%B0%D1%81%D0%B5%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5" target="_blank">Списък на щатите в САЩ по население</a>
+<hr/>
+## Градове с най-много продажби
+```{r, echo=FALSE}
+orders.cities <- aggregate(cbind(df$Quantity), by = list(City = df$City), FUN = sum)
+names(orders.cities)[2] <- "Freq"
+orders.cities.top10 <- select(head(orders.cities[order(-orders.cities$Freq, orders.cities$City ),], 10), "City", "Freq")
+orders.cities.top10$City <- factor(orders.cities.top10$City, levels = unique(orders.cities.top10$City)[order(orders.cities.top10$Freq, decreasing = TRUE)])
+
+plot_ly(data = orders.cities.top10, x = ~City, y = ~Freq, type = "bar") %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
+         xaxis = list(title = "Град"), yaxis = list(title = "Брой продажби"))
+```
+Градът с най-много продадени артикули е Ню Йорк Сити, а второ място заема Лос Анджелис, който се намира в щата Калифорния (щатът с най-много продажби). Тенденцията тук също показва, че най-много продажби има в големите градове. Градовете Филаделфия (Пенсилвания) и Сиатъл (Вашингтон) правят голяма част от продажбите в тези щати. Например: Филаделфия има 1981 продадени продукта, а в целия щат са 2153 -> `r 2153-1981` продадени продукта от останили населени места в щата.
+<hr/>
+## Най-големи продажби (за единичен продукт)
+```{r, echo=FALSE}
+orders.products.top10 <- select(head(df[order(-df$FinalPrice),]), "Order.ID", "Product.Name", "Category", "Sales", "Quantity", "Discount", "FinalPrice")
+orders.products.top10$Discount <- paste0(orders.products.top10$Discount * 100, "%")
+orders.products.top10$FinalPrice <- paste0("$", orders.products.top10$FinalPrice)
+names(orders.products.top10) <- c("№ поръчка", "Продукт", "Категория", "Единична цена", "Количество", "Отстъпка", "Крайна цена")
+rownames(orders.products.top10) <- orders.products.top10$Order.ID
+kable(orders.products.top10)
+```
+На тази таблица са показани най-големите продажби, които са направени за единичен продукт. Най-голямата е на стойност $128605.62 и е от категория "Канцеларски материали" (Office Supplies). Всички останали са от технологичната категория. Интересен случай е третият продукт, който при закупени 6, е направена 50% отсъпка.
+<hr/>
+## Най-печеливши и най-продавани продукти
+```{r, echo=FALSE}
+orders.products.top25.profit <- aggregate(cbind(df$Profit), by = list(Product.Name = df$Product.Name), FUN = sum)
+orders.products.top25.profit <- head(orders.products.top25.profit[order(-orders.products.top25.profit$V1),], 25)
+orders.products.top25.profit$Product.Name <- factor(orders.products.top25.profit$Product.Name, levels = unique(orders.products.top25.profit$Product.Name)[order(orders.products.top25.profit$V1, decreasing = TRUE)])
+
+plot_ly(orders.products.top25.profit, x = ~Product.Name, y = ~V1, type = "bar") %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
+         xaxis = list(title = ""), yaxis = list(title = "Печалба"))
+```
+Тук се вижда продуктът с най-голяма печалба от всички с малко над 25 хиляди долара и това е Canon imageCLASS 2200 Advanced Copier.
+```{r, echo=FALSE}
+orders.products.top25.count <- aggregate(cbind(df$Quantity), by = list(Product.Name = df$Product.Name), FUN = sum)
+names(orders.products.top25.count)[2] <- "Freq"
+orders.products.top25.count <- head(orders.products.top25.count[order(-orders.products.top25.count$Freq),], 25)
+orders.products.top25.count$Product.Name <- factor(orders.products.top25.count$Product.Name, levels = unique(orders.products.top25.count$Product.Name)[order(orders.products.top25.count$Freq, decreasing = TRUE)])
+
+
+plot_ly(orders.products.top25.count, x = ~Product.Name, y = ~Freq, type = "bar") %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
+         xaxis = list(title = ""), yaxis = list(title = "Брой"))
+```
+Най-продаваните продукти (по брой) са скоби за телбод, като те са различни видове, но всички те заемат позиите като най-продавани.
+<hr/>
+## Връзка на крайна сума и печалба
+```{r, echo=FALSE}
+orders.top50 <- aggregate(cbind(df$FinalPrice, df$Profit), by = list(Order.ID = df$Order.ID), FUN = sum)
+orders.top50 <- head(orders.top50[order(-orders.top50$V1),], 50)
+
+plot_ly(orders.top50, x = ~1:50, y = ~V1, name = "Крайна сума", type = "scatter", mode = "lines+markers") %>%
+  add_trace(y = ~V2, name = "Печалба", mode = "lines+markers") %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
+         xaxis = list(title = "Поръчка"), yaxis = list(title = "Крайна цена"))
+```
+Тази графика показва връзката между крайната сума и печалбата на магазина за 50 поръчки (има поръчки с повече от един продукт), които са подредени по крайна цена. Може да се забележи, че дори и при първата продажба, печалбата е много малка. Има продажби с висока цена, но в същото време магазинът е на загуба. Средната печалба от тези 50 продажби е $`r round(mean(orders.top50$V2), 2)`.
+<hr/>
+## Продажби по клиенти
+```{r, echo=FALSE}
+orders.customers.top10 <- aggregate(cbind(df$FinalPrice, df$Profit), by = list(Customer.ID = df$Customer.ID), FUN = sum)
+orders.customers.top10 <- head(orders.customers.top10[order(-orders.customers.top10$V1),], 10)
+orders.customers.top10$Customer.ID <- factor(orders.customers.top10$Customer.ID, levels = unique(orders.customers.top10$Customer.ID)[order(orders.customers.top10$V1, decreasing = TRUE)])
+
+orders.customers.top10 %>% plot_ly() %>%
+  add_trace(x = ~orders.customers.top10$Customer.ID, y = ~orders.customers.top10$V1, name = "Крайна сума", type = "bar") %>%
+  add_trace(x = ~orders.customers.top10$Customer.ID, y = ~orders.customers.top10$V2, name = "Печалба", type = "bar") %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
+         xaxis = list(title = "Клиент"), yaxis = list(title = "Сума"))
+```
+Това са 10 клиента, които са направили най-голям оборот на магазина. Адриан Бартън (AB-10105, физическо лице) е направил поръчки на стойност $141627.42. При останалите се вижда прибилително еднавки стойности след 3-тия клиент. Ако погледнем печалбата, най-голям принос има Тамара Чанд (TC-20980, юридическо лице). Покупките на клиент с номер SM-20320 (работа от вкъщи) е генерирало загуба от $1980.75.
