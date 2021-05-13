@@ -41,6 +41,15 @@ orders.SecondClass <- filter(df, Ship.Mode == "Second Class")$Ship.Days
 orders.StandardClass <- filter(df, Ship.Mode == "Standard Class")$Ship.Days
 
 # Shipping modes and days
+orders.shippingModes <- aggregate(cbind(df$Row.ID), by = list(Ship.Mode = df$Ship.Mode), FUN = length)
+names(orders.shippingModes)[2] <- "Freq"
+plot_ly(orders.shippingModes, labels = ~Ship.Mode, values = ~Freq, type = "pie", hole = 0.5) %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor)
+
+# Days distribution
+orders.days <- aggregate(cbind(df$Row.ID), by = list(Segment = df$Ship.Days), FUN = length)
+names(orders.days) <- c("Дни", "Брой")
+
 shippingModes <- c("Same Day", "First Class", "Second Class", "Standard Class")
 orders.shipping <- data.frame(Mode = shippingModes,
                               Days = c(mean(orders.SameDay), mean(orders.FirstClass), mean(orders.SecondClass), mean(orders.StandardClass)))
@@ -108,7 +117,7 @@ orders.products.top25.profit$Product.Name <- factor(orders.products.top25.profit
 
 plot_ly(orders.products.top25.profit, x = ~Product.Name, y = ~V1, type = "bar") %>%
   layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
-         xaxis = list(title = "Продукт"), yaxis = list(title = "Печалба"))
+         xaxis = list(visible = FALSE), yaxis = list(title = "Печалба"))
 
 orders.products.top25.count <- aggregate(cbind(df$Quantity), by = list(Product.Name = df$Product.Name), FUN = sum)
 names(orders.products.top25.count)[2] <- "Freq"
@@ -117,7 +126,7 @@ orders.products.top25.count$Product.Name <- factor(orders.products.top25.count$P
 
 plot_ly(orders.products.top25.count, x = ~Product.Name, y = ~Freq, type = "bar") %>%
   layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
-         xaxis = list(title = "Продукт"), yaxis = list(title = "Брой"))
+         xaxis = list(visible = FALSE), yaxis = list(title = "Брой"))
 
 # Final price and profit
 orders.top50 <- aggregate(cbind(df$FinalPrice, df$Profit), by = list(Order.ID = df$Order.ID), FUN = sum)

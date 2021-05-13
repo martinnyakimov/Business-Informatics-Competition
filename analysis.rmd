@@ -81,6 +81,22 @@ kable(orders.shipping.days)
 ```
 Магазинът предлага 4 вида доставки - на същия ден, първа класа, втора класа и стандартна. Тези, които пристигат на същия ден има няколко забавени доставки, които са доставени на следващия ден. Доставките от първа класа престигат средно за два дни, а най-голям период от време е стандартния тип, където клиентите получават продуктите за около 5 дни след поръчката. Най-бавната доставка е била 7 дни и е от стандартен тип. Може да се забележи, че е имало поръчки от втора класа, които са пристигали за 1 ден, колкото е и при първа класа.
 <hr/>
+```{r, echo=FALSE}
+orders.days <- aggregate(cbind(df$Row.ID), by = list(Segment = df$Ship.Days), FUN = length)
+names(orders.days) <- c("Дни", "Брой")
+
+kable(orders.days)
+```
+От тази таблица става ясно, че най-често една доставка пристига за 4 или 5 дни. Най-малко са доставките, които се доставят на същия ден или на следващия.
+<hr/>
+```{r, echo=FALSE}
+orders.shippingModes <- aggregate(cbind(df$Row.ID), by = list(Ship.Mode = df$Ship.Mode), FUN = length)
+names(orders.shippingModes)[2] <- "Freq"
+plot_ly(orders.shippingModes, labels = ~Ship.Mode, values = ~Freq, type = "pie", hole = 0.5) %>%
+  layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor)
+```
+Ако погледнем съотношението на достаквите, лесно може да се види, че стандартната доставка е най-честата (близо 60%). Най-малко използваният тип е тази за един ден. Може да се свърже с възможното увеличение на цените на доставка. Както се вижда и в горната таблица, дори и при стандартната и втора класа доставка, поръчката може да се достави и по-бързо от средната стойност.
+<hr/>
 ## Продадени продукти по щат
 ```{r, echo=FALSE}
 orders.states <- aggregate(cbind(df$Quantity), by = list(State = df$State), FUN = sum)
@@ -154,7 +170,7 @@ orders.products.top25.profit$Product.Name <- factor(orders.products.top25.profit
 
 plot_ly(orders.products.top25.profit, x = ~Product.Name, y = ~V1, type = "bar") %>%
   layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
-         xaxis = list(title = ""), yaxis = list(title = "Печалба"))
+         xaxis = list(visible = FALSE), yaxis = list(title = "Печалба"))
 ```
 Тук се вижда продуктът с най-голяма печалба от всички с малко над 25 хиляди долара и това е Canon imageCLASS 2200 Advanced Copier.
 ```{r, echo=FALSE}
@@ -163,10 +179,9 @@ names(orders.products.top25.count)[2] <- "Freq"
 orders.products.top25.count <- head(orders.products.top25.count[order(-orders.products.top25.count$Freq),], 25)
 orders.products.top25.count$Product.Name <- factor(orders.products.top25.count$Product.Name, levels = unique(orders.products.top25.count$Product.Name)[order(orders.products.top25.count$Freq, decreasing = TRUE)])
 
-
 plot_ly(orders.products.top25.count, x = ~Product.Name, y = ~Freq, type = "bar") %>%
   layout(paper_bgcolor = style.bgcolor, plot_bgcolor = style.bgcolor,
-         xaxis = list(title = ""), yaxis = list(title = "Брой"))
+         xaxis = list(visible = FALSE), yaxis = list(title = "Брой"))
 ```
 Най-продаваните продукти (по брой) са скоби за телбод, като те са различни видове, но всички те заемат позиите като най-продавани.
 <hr/>
